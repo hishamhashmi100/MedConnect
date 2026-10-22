@@ -24,9 +24,9 @@ Supervisor: Dr. Husnain Mansoor.
 - **Doctor dashboard:** today's, this week's and upcoming counts, the appointment list, and marking
   visits as completed.
 
-Pharmacy orders, equipment rental, caretakers, the AI health assistant, health records, reminders,
-promo codes and payments are planned for FYP-II. Their database design is already in
-[docs/schema.md](docs/schema.md).
+Pharmacy orders (cash on delivery) come next in FYP-I. Equipment rental, caretakers, the AI health
+assistant, health records, reminders and promo codes are planned for FYP-II. The database design for
+all of them is already in [docs/schema.md](docs/schema.md), and the diagrams are in [docs/erd](docs/erd).
 
 ## Tech stack
 
