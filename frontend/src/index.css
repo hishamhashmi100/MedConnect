@@ -1,0 +1,18 @@
+@import 'tailwindcss';
+
+/* Brand colours, taken from the design screenshots. Use these names instead of hex codes. */
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+
+  --color-primary: #0f766e;
+  --color-primary-dark: #134e4a;
+  --color-mint: #e6f4f1;
+  --color-teal-soft: #6cc4a6;
+  --color-page: #f7faf9;
+  --color-pending: #fef3c7;
+  --color-pending-text: #92400e;
+}
+
+body {
+  @apply bg-page font-sans text-slate-700 antialiased;
+}
