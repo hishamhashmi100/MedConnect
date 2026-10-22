@@ -25,8 +25,7 @@ Supervisor: Dr. Husnain Mansoor.
   visits as completed.
 
 Pharmacy orders (cash on delivery) come next in FYP-I. Equipment rental, caretakers, the AI health
-assistant, health records, reminders and promo codes are planned for FYP-II. The database design for
-all of them is already in [docs/schema.md](docs/schema.md), and the diagrams are in [docs/erd](docs/erd).
+assistant, health records, reminders and promo codes are planned for FYP-II.
 
 ## Tech stack
 
@@ -56,9 +55,6 @@ frontend/
     context/         logged-in user
     components/      shared UI pieces
     pages/           auth, patient, doctor and admin pages
-docs/
-  srs-notes.md       notes for the SRS document
-  schema.md          database tables and ERD
 design/              screen designs
 ```
 
