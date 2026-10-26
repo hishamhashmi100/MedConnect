@@ -175,8 +175,9 @@ def add_user(db, full_name, email, role):
     return user
 
 
-def add_doctor(db, data, status, submitted_days_ago):
+def add_doctor(db, data, status, submitted_days_ago, reviewer=None):
     user = add_user(db, data["name"], data["email"], "doctor")
+    submitted_at = datetime.now() - timedelta(days=submitted_days_ago)
     profile = DoctorProfile(
         user=user,
         specialty=data["specialty"],
@@ -190,7 +191,10 @@ def add_doctor(db, data, status, submitted_days_ago):
         offers_home_visit=data["home_visits"],
         slot_minutes=30,
         approval_status=status,
-        submitted_at=datetime.now() - timedelta(days=submitted_days_ago),
+        submitted_at=submitted_at,
+        # Reviewed doctors were checked by the admin the day after they applied
+        reviewer=reviewer,
+        reviewed_at=submitted_at + timedelta(days=1) if reviewer else None,
     )
     profile.availability = [
         Availability(
@@ -264,9 +268,9 @@ def main():
             print("Demo data is already there. Run with --reset to start again.")
             return
 
-        add_user(db, "Admin Team", ADMIN_EMAIL, "admin")
+        admin = add_user(db, "Admin Team", ADMIN_EMAIL, "admin")
         doctors = [
-            add_doctor(db, data, "approved", submitted_days_ago=20 - index)
+            add_doctor(db, data, "approved", submitted_days_ago=20 - index, reviewer=admin)
             for index, data in enumerate(DOCTORS)
         ]
         add_doctor(db, PENDING_DOCTOR, "pending", submitted_days_ago=1)

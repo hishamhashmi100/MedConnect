@@ -270,6 +270,11 @@ function AdminHome() {
                   </td>
                   <td className="py-5 pr-4">
                     <StatusBadge status={doctor.approval_status} />
+                    {doctor.reviewed_by_name && (
+                      <p className="mt-2 text-sm text-slate-500">
+                        By {doctor.reviewed_by_name}, {formatShortDate(doctor.reviewed_at)}
+                      </p>
+                    )}
                   </td>
                   <td className="py-5">
                     <div className="flex gap-2">

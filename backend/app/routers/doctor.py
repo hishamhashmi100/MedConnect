@@ -71,10 +71,13 @@ def save_profile(
     for field, value in data.model_dump().items():
         setattr(profile, field, value)
 
-    # A rejected doctor who fixes their details goes back into the admin queue
+    # A rejected doctor who fixes their details goes back into the admin queue,
+    # and the old decision no longer applies
     if profile.approval_status == "rejected":
         profile.approval_status = "pending"
         profile.rejection_reason = None
+        profile.reviewer = None
+        profile.reviewed_at = None
         profile.submitted_at = datetime.now()
 
     db.commit()

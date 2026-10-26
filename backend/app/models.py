@@ -21,7 +21,9 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.now, nullable=False)
 
     # One-to-one: only users with the doctor role have a profile
-    doctor_profile: Mapped["DoctorProfile | None"] = relationship(back_populates="user")
+    doctor_profile: Mapped["DoctorProfile | None"] = relationship(
+        back_populates="user", foreign_keys="DoctorProfile.user_id"
+    )
     # One-to-many: a patient has many appointments
     appointments: Mapped[list["Appointment"]] = relationship(back_populates="patient")
 
@@ -70,8 +72,15 @@ class DoctorProfile(Base):
     approval_status: Mapped[str] = mapped_column(String(10), default="pending", nullable=False)
     rejection_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     submitted_at: Mapped[datetime] = mapped_column(default=datetime.now, nullable=False)
+    # The admin who approved or rejected the profile, and when. Empty while it is pending.
+    reviewed_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
-    user: Mapped[User] = relationship(back_populates="doctor_profile")
+    # Two foreign keys point at users, so each relationship names the one it uses
+    user: Mapped[User] = relationship(back_populates="doctor_profile", foreign_keys=[user_id])
+    reviewer: Mapped[User | None] = relationship(foreign_keys=[reviewed_by])
     # One-to-many: a doctor has several weekly time blocks
     availability: Mapped[list["Availability"]] = relationship(
         back_populates="doctor",

@@ -10,15 +10,18 @@ from app.models import Appointment, DoctorProfile, User
 from app.schemas import AdminDoctorOut, AdminStatsOut, DoctorProfileOut, RejectIn
 from app.security import require_role
 
-router = APIRouter(
-    prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_role("admin"))]
-)
+current_admin = require_role("admin")
+router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(current_admin)])
 
 
 def admin_doctor(profile):
     profile_data = DoctorProfileOut.model_validate(profile).model_dump()
     return AdminDoctorOut(
-        **profile_data, full_name=profile.user.full_name, email=profile.user.email
+        **profile_data,
+        full_name=profile.user.full_name,
+        email=profile.user.email,
+        reviewed_by_name=profile.reviewer.full_name if profile.reviewer else None,
+        reviewed_at=profile.reviewed_at,
     )
 
 
@@ -74,18 +77,29 @@ def list_doctors(
 
 
 @router.post("/doctors/{doctor_id}/approve", response_model=AdminDoctorOut)
-def approve_doctor(doctor_id: int, db: Session = Depends(get_db)):
+def approve_doctor(
+    doctor_id: int, admin: User = Depends(current_admin), db: Session = Depends(get_db)
+):
     profile = find_profile(db, doctor_id)
     profile.approval_status = "approved"
     profile.rejection_reason = None
+    profile.reviewer = admin
+    profile.reviewed_at = datetime.now()
     db.commit()
     return admin_doctor(profile)
 
 
 @router.post("/doctors/{doctor_id}/reject", response_model=AdminDoctorOut)
-def reject_doctor(doctor_id: int, data: RejectIn, db: Session = Depends(get_db)):
+def reject_doctor(
+    doctor_id: int,
+    data: RejectIn,
+    admin: User = Depends(current_admin),
+    db: Session = Depends(get_db),
+):
     profile = find_profile(db, doctor_id)
     profile.approval_status = "rejected"
     profile.rejection_reason = data.reason
+    profile.reviewer = admin
+    profile.reviewed_at = datetime.now()
     db.commit()
     return admin_doctor(profile)

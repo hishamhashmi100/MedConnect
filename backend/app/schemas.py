@@ -248,6 +248,8 @@ class AppointmentStatusIn(BaseModel):
 class AdminDoctorOut(DoctorProfileOut):
     full_name: str
     email: str
+    reviewed_by_name: str | None
+    reviewed_at: datetime | None
 
 
 class RejectIn(BaseModel):
