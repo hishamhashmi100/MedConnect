@@ -26,10 +26,23 @@ cd backend
 py -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
-copy .env.example .env
 ```
 
-Open `backend\.env` and fill it in:
+Create a file called `.env` in the `backend` folder with these lines:
+
+```
+DATABASE_URL=postgresql+psycopg2://postgres:your_db_password@localhost:5432/medconnect
+FRONTEND_URL=http://localhost:5173
+JWT_SECRET=change_me_to_a_long_random_string
+JWT_EXPIRE_MINUTES=1440
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASSWORD=
+DEMO_MODE=true
+```
+
+Then fill it in:
 
 - `DATABASE_URL`: put the real database password in it.
 - `JWT_SECRET`: any long random string. Generate one with
@@ -37,6 +50,13 @@ Open `backend\.env` and fill it in:
 - `SMTP_USER` and `SMTP_PASSWORD`: a Gmail address and a Gmail app password (Google Account, then
   Security, then 2-Step Verification, then App passwords). If you leave `SMTP_USER` empty, OTP codes are
   printed in the backend terminal instead of being emailed, which is fine for development.
+  If sign up says "We could not send the verification email right now" and the backend terminal shows
+  `Username and Password not accepted`, the app password was revoked (this happens when the Google
+  password changes). Make a new app password and put it in `SMTP_PASSWORD`.
+
+The backend creates any missing tables on startup, but it does not add new columns to tables that
+already exist. If your database was made by an older version, run `python seed.py --reset` (this
+wipes it and fills it with demo data again).
 
 Then start the API:
 
@@ -57,8 +77,14 @@ In a second terminal:
 ```
 cd frontend
 npm install
-copy .env.example .env
 npm run dev
+```
+
+Before the first `npm run dev`, create `frontend\.env` with:
+
+```
+VITE_API_URL=http://localhost:8000/api
+VITE_DEMO_MODE=true
 ```
 
 The app runs on http://localhost:5173. `VITE_API_URL` in `frontend\.env` points it at the backend.
@@ -76,7 +102,8 @@ python seed.py --reset
 script only adds the demo data if it isn't there yet. Appointment dates are worked out from the day you
 run it, so run it again before a demo to get fresh upcoming appointments.
 
-It adds 10 approved doctors in Karachi, 1 doctor waiting for approval, 3 patients and an admin.
+It adds 12 approved doctors in Karachi (one or more for every specialty), 1 doctor waiting for
+approval, 3 patients and an admin.
 Every demo account uses the password `demo1234`:
 
 | Role | Email |
@@ -91,23 +118,6 @@ Admin accounts are never created through the app; this script is the only way to
 With `DEMO_MODE=true` (backend) and `VITE_DEMO_MODE=true` (frontend), the login and register pages show
 an "Explore the patient demo" link that logs straight in as Ahmed Raza.
 
-## 5. Tests
-
-The tests use their own database so they never touch the demo data. Create it once:
-
-```
-D:\postgres\bin\createdb.exe -U postgres -h localhost medconnect_test
-```
-
-Put its connection string in `TEST_DATABASE_URL` in `backend\.env`, then from the `backend` folder:
-
-```
-python -m pytest
-```
-
-The tests empty and refill the test database each time. They cover sign up, verification and login,
-slot generation, and double booking.
-
 ## Environment variables
 
 | File | Variable | What it is |
@@ -119,8 +129,7 @@ slot generation, and double booking.
 | `backend/.env` | `SMTP_HOST`, `SMTP_PORT` | Mail server, `smtp.gmail.com` and `587` for Gmail |
 | `backend/.env` | `SMTP_USER`, `SMTP_PASSWORD` | Gmail address and app password used to send OTP emails |
 | `backend/.env` | `DEMO_MODE` | `true` turns on the one-click demo patient login |
-| `backend/.env` | `TEST_DATABASE_URL` | Separate database used only by the tests |
 | `frontend/.env` | `VITE_API_URL` | Base URL of the backend API |
 | `frontend/.env` | `VITE_DEMO_MODE` | `true` shows the "Explore the patient demo" link |
 
-`.env` files are never committed. When we add a new variable we also add it to the matching `.env.example`.
+`.env` files are never committed, because they hold passwords and secrets.
