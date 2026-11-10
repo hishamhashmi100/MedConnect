@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.constants import CITIES, SLOT_LENGTHS, SPECIALTIES, SYMPTOMS
+from app.constants import SLOT_LENGTHS, SPECIALTIES, SYMPTOMS
 
 # Fixed lists the frontend uses for dropdowns
 router = APIRouter(prefix="/api/meta", tags=["meta"])
@@ -14,11 +14,6 @@ def specialties():
 @router.get("/symptoms")
 def symptoms():
     return [{"symptom": symptom, "specialty": specialty} for symptom, specialty in SYMPTOMS.items()]
-
-
-@router.get("/cities")
-def cities():
-    return CITIES
 
 
 @router.get("/slot-lengths")

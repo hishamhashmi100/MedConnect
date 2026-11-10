@@ -1,3 +1,4 @@
+import logging
 import math
 import secrets
 import smtplib
@@ -11,7 +12,8 @@ from app.config import settings
 from app.constants import DEMO_PATIENT_EMAIL
 from app.database import get_db
 from app.email_utils import send_otp_email
-from app.models import OtpCode, User
+from app.models import DoctorProfile, OtpCode, User
+from app.routers.doctor import claim_pmdc
 from app.schemas import (
     AuthOut,
     ForgotPasswordIn,
@@ -26,6 +28,7 @@ from app.schemas import (
 from app.security import check_password, create_token, get_current_user, hash_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+logger = logging.getLogger("uvicorn.error")
 
 OTP_VALID_MINUTES = 10
 OTP_MAX_ATTEMPTS = 5
@@ -75,10 +78,15 @@ def send_new_otp(db, email, purpose):
     # Commit only after the email goes out, so a failed send doesn't leave a half-made sign up
     try:
         send_otp_email(email, code, purpose)
-    except (smtplib.SMTPException, OSError):
+    except (smtplib.SMTPException, OSError) as error:
+        # The user only sees a short message, so the real cause goes to the backend console
+        logger.error("Could not send the %s code to %s: %r", purpose, email, error)
         db.rollback()
+        kind = "verification" if purpose == "verify" else "password reset"
         raise HTTPException(
-            status_code=503, detail="We could not send the email right now. Please try again"
+            status_code=503,
+            detail=f"We could not send the {kind} email right now. "
+            "Please try again in a few minutes",
         )
     db.commit()
 
@@ -115,19 +123,32 @@ def use_otp(db, email, purpose, code):
 
 @router.post("/register", status_code=201, response_model=MessageOut)
 def register(data: RegisterIn, db: Session = Depends(get_db)):
-    if find_user(db, data.email):
+    user = find_user(db, data.email)
+    if user and user.is_verified:
         raise HTTPException(
             status_code=400, detail="An account with this email already exists. Please log in"
         )
+    if data.doctor_profile:
+        claim_pmdc(db, data.doctor_profile.pmdc_number, user)
 
-    db.add(
-        User(
-            full_name=data.full_name,
-            email=data.email,
-            password_hash=hash_password(data.password),
-            role=data.role,
-        )
-    )
+    # A sign up that was never verified is simply replaced, so a typo or a lost code
+    # doesn't lock the email address
+    if user is None:
+        user = User(email=data.email)
+        db.add(user)
+    user.full_name = data.full_name
+    user.password_hash = hash_password(data.password)
+    user.role = data.role
+
+    if data.doctor_profile:
+        profile = user.doctor_profile or DoctorProfile(user=user)
+        for field, value in data.doctor_profile.model_dump().items():
+            setattr(profile, field, value)
+        profile.submitted_at = datetime.now()
+        db.add(profile)
+    elif user.doctor_profile:
+        db.delete(user.doctor_profile)
+
     send_new_otp(db, data.email, "verify")
     return {"message": "We sent a 6-digit code to your email"}
 
@@ -158,8 +179,24 @@ def resend_otp(data: ResendOtpIn, db: Session = Depends(get_db)):
 @router.post("/login", response_model=AuthOut)
 def login(data: LoginIn, db: Session = Depends(get_db)):
     user = find_user(db, data.email)
-    if user is None or not check_password(data.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+    # Sign up already says when an email is taken, so naming a missing account here
+    # gives nothing extra away and tells the user what to do next
+    if user is None:
+        raise HTTPException(
+            status_code=401, detail="No account found with this email. Please register first"
+        )
+    if not check_password(data.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Incorrect password. Please try again")
+
+    # Patients log in on the Patient tab and doctors on the Provider tab. Admins have no
+    # tab of their own, so they can use either.
+    if user.role != "admin" and user.role != data.role:
+        tab = "Provider" if user.role == "doctor" else "Patient"
+        raise HTTPException(
+            status_code=403,
+            detail=f"This account is registered as a {user.role}. "
+            f"Please log in on the {tab} tab",
+        )
 
     if not user.is_verified:
         # The old code has probably expired, so send a fresh one unless we just did

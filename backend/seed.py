@@ -13,9 +13,9 @@ from sqlalchemy import select
 
 from app.constants import DEMO_PATIENT_EMAIL
 from app.database import Base, SessionLocal, engine
-from app.models import Appointment, Availability, DoctorProfile, User
+from app.models import Appointment, Availability, Clinic, DoctorProfile, User
 from app.security import hash_password
-from app.slots import BOOKING_WINDOW_DAYS, add_minutes, day_slots, open_slots
+from app.slots import BOOKING_WINDOW_DAYS, add_minutes, blocks_at, day_slots, open_slots
 
 # Every demo account uses the same password so they are easy to try out
 DEMO_PASSWORD = "demo1234"
@@ -23,8 +23,12 @@ ADMIN_EMAIL = "admin@example.com"
 
 MON_TO_FRI = [0, 1, 2, 3, 4]
 MON_TO_SAT = [0, 1, 2, 3, 4, 5]
+# Marks hours and bookings that are home visits rather than at a clinic
+HOME = "home"
 
-# hours is a list of (weekdays, start, end) blocks
+# clinics is a list of (name, area, address, fee). home_fee is None for doctors who don't
+# do home visits. hours is a list of (weekdays, start, end, place), where place is the
+# index of a clinic in the list, or HOME.
 DOCTORS = [
     {
         "name": "Ayesha Siddiqui",
@@ -32,11 +36,21 @@ DOCTORS = [
         "specialty": "Cardiologist",
         "pmdc": "12345-P",
         "experience": 12,
-        "area": "Clifton",
-        "clinic": "Plot 21, Block 4, Clifton, Karachi",
-        "fee": 2500,
-        "home_visits": True,
-        "hours": [(MON_TO_SAT, "10:00", "13:00"), (MON_TO_FRI, "17:00", "21:00")],
+        "clinics": [
+            ("Clifton Heart Centre", "Clifton", "Plot 21, Block 4, Clifton, Karachi", 2500),
+            (
+                "Seaview Medical Complex",
+                "DHA Phase 5",
+                "Khayaban-e-Shahbaz, Phase 5, DHA, Karachi",
+                3500,
+            ),
+        ],
+        "home_fee": 4000,
+        "hours": [
+            (MON_TO_SAT, "10:00", "13:00", 0),
+            (MON_TO_FRI, "17:00", "20:00", 1),
+            ([5, 6], "15:00", "18:00", HOME),
+        ],
     },
     {
         "name": "Bilal Ahmed",
@@ -44,11 +58,20 @@ DOCTORS = [
         "specialty": "General Physician",
         "pmdc": "78421-S",
         "experience": 9,
-        "area": "Gulshan-e-Iqbal",
-        "clinic": "Shop 3, Block 13-D, Gulshan-e-Iqbal, Karachi",
-        "fee": 1800,
-        "home_visits": True,
-        "hours": [(MON_TO_SAT, "09:00", "14:00"), ([6], "11:00", "15:00")],
+        "clinics": [
+            (
+                "Gulshan Family Clinic",
+                "Gulshan-e-Iqbal",
+                "Shop 3, Block 13-D, Gulshan-e-Iqbal, Karachi",
+                1800,
+            ),
+        ],
+        "home_fee": 2500,
+        "hours": [
+            (MON_TO_SAT, "09:00", "14:00", 0),
+            (MON_TO_FRI, "18:00", "20:00", HOME),
+            ([6], "11:00", "15:00", HOME),
+        ],
     },
     {
         "name": "Fatima Khan",
@@ -56,11 +79,16 @@ DOCTORS = [
         "specialty": "Dermatologist",
         "pmdc": "45120-P",
         "experience": 7,
-        "area": "DHA Phase 6",
-        "clinic": "Khayaban-e-Ittehad, Phase 6, DHA, Karachi",
-        "fee": 3000,
-        "home_visits": False,
-        "hours": [(MON_TO_FRI, "16:00", "20:00")],
+        "clinics": [
+            (
+                "Skin and Laser Clinic",
+                "DHA Phase 6",
+                "Khayaban-e-Ittehad, Phase 6, DHA, Karachi",
+                3000,
+            ),
+        ],
+        "home_fee": None,
+        "hours": [(MON_TO_FRI, "16:00", "20:00", 0)],
     },
     {
         "name": "Usman Qureshi",
@@ -68,11 +96,21 @@ DOCTORS = [
         "specialty": "Pediatrician",
         "pmdc": "30987-P",
         "experience": 15,
-        "area": "North Nazimabad",
-        "clinic": "Block H, North Nazimabad, Karachi",
-        "fee": 2000,
-        "home_visits": True,
-        "hours": [(MON_TO_SAT, "10:00", "14:00"), ([0, 2, 4], "18:00", "21:00")],
+        "clinics": [
+            (
+                "Nazimabad Children's Clinic",
+                "North Nazimabad",
+                "Block H, North Nazimabad, Karachi",
+                2000,
+            ),
+            ("Gulberg Medical Centre", "Gulberg", "Block 9, Gulberg Town, Karachi", 2500),
+        ],
+        "home_fee": 3000,
+        "hours": [
+            (MON_TO_SAT, "10:00", "14:00", 0),
+            ([0, 2, 4], "18:00", "21:00", 1),
+            ([1, 3], "18:00", "20:00", HOME),
+        ],
     },
     {
         "name": "Sana Malik",
@@ -80,11 +118,11 @@ DOCTORS = [
         "specialty": "Gynecologist",
         "pmdc": "51234-P",
         "experience": 11,
-        "area": "PECHS",
-        "clinic": "Block 2, PECHS, Karachi",
-        "fee": 3500,
-        "home_visits": False,
-        "hours": [(MON_TO_FRI, "11:00", "15:00")],
+        "clinics": [
+            ("PECHS Women's Health Clinic", "PECHS", "Block 2, PECHS, Karachi", 3500),
+        ],
+        "home_fee": None,
+        "hours": [(MON_TO_FRI, "11:00", "15:00", 0)],
     },
     {
         "name": "Hamza Sheikh",
@@ -92,11 +130,17 @@ DOCTORS = [
         "specialty": "Orthopedic Surgeon",
         "pmdc": "60412-P",
         "experience": 14,
-        "area": "Clifton",
-        "clinic": "Block 5, Clifton, Karachi",
-        "fee": 3500,
-        "home_visits": False,
-        "hours": [([1, 3, 5], "17:00", "21:00")],
+        "clinics": [
+            ("Clifton Bone and Joint Clinic", "Clifton", "Block 5, Clifton, Karachi", 3500),
+            (
+                "Karsaz Surgical Centre",
+                "Karsaz",
+                "Shahrah-e-Faisal, near Karsaz, Karachi",
+                3000,
+            ),
+        ],
+        "home_fee": None,
+        "hours": [([1, 3, 5], "17:00", "21:00", 0), ([0, 2], "10:00", "13:00", 1)],
     },
     {
         "name": "Kamran Yousuf",
@@ -104,11 +148,16 @@ DOCTORS = [
         "specialty": "ENT Specialist",
         "pmdc": "27765-S",
         "experience": 10,
-        "area": "Gulshan-e-Iqbal",
-        "clinic": "Block 10-A, Gulshan-e-Iqbal, Karachi",
-        "fee": 2200,
-        "home_visits": False,
-        "hours": [(MON_TO_SAT, "17:00", "20:00")],
+        "clinics": [
+            (
+                "Gulshan ENT Clinic",
+                "Gulshan-e-Iqbal",
+                "Block 10-A, Gulshan-e-Iqbal, Karachi",
+                2200,
+            ),
+        ],
+        "home_fee": None,
+        "hours": [(MON_TO_SAT, "17:00", "20:00", 0)],
     },
     {
         "name": "Nadia Hussain",
@@ -116,11 +165,11 @@ DOCTORS = [
         "specialty": "Psychiatrist",
         "pmdc": "48890-P",
         "experience": 8,
-        "area": "DHA Phase 2",
-        "clinic": "Phase 2 Extension, DHA, Karachi",
-        "fee": 3000,
-        "home_visits": True,
-        "hours": [(MON_TO_FRI, "12:00", "16:00")],
+        "clinics": [
+            ("Mind Care Clinic", "DHA Phase 2", "Phase 2 Extension, DHA, Karachi", 3000),
+        ],
+        "home_fee": 3500,
+        "hours": [(MON_TO_FRI, "12:00", "16:00", 0), ([5], "11:00", "14:00", HOME)],
     },
     {
         "name": "Faisal Memon",
@@ -128,11 +177,12 @@ DOCTORS = [
         "specialty": "Gastroenterologist",
         "pmdc": "39021-P",
         "experience": 13,
-        "area": "PECHS",
-        "clinic": "Block 6, PECHS, Karachi",
-        "fee": 2800,
-        "home_visits": False,
-        "hours": [([0, 2, 4], "10:00", "13:00"), ([1, 3], "17:00", "20:00")],
+        "clinics": [
+            ("PECHS Digestive Clinic", "PECHS", "Block 6, PECHS, Karachi", 2800),
+            ("Saddar Medical Centre", "Saddar", "Abdullah Haroon Road, Saddar, Karachi", 2000),
+        ],
+        "home_fee": None,
+        "hours": [([0, 2, 4], "10:00", "13:00", 0), ([1, 3], "17:00", "20:00", 1)],
     },
     {
         "name": "Hira Baig",
@@ -140,11 +190,51 @@ DOCTORS = [
         "specialty": "Eye Specialist",
         "pmdc": "55673-P",
         "experience": 6,
-        "area": "North Nazimabad",
-        "clinic": "Block L, North Nazimabad, Karachi",
-        "fee": 1500,
-        "home_visits": False,
-        "hours": [(MON_TO_SAT, "09:00", "13:00")],
+        "clinics": [
+            (
+                "Nazimabad Eye Clinic",
+                "North Nazimabad",
+                "Block L, North Nazimabad, Karachi",
+                1500,
+            ),
+        ],
+        "home_fee": None,
+        "hours": [(MON_TO_SAT, "09:00", "13:00", 0)],
+    },
+    {
+        "name": "Tariq Mehmood",
+        "email": "tariq.mehmood@example.com",
+        "specialty": "Neurologist",
+        "pmdc": "41876-P",
+        "experience": 16,
+        "clinics": [
+            (
+                "Karachi Neuro Centre",
+                "Gulshan-e-Iqbal",
+                "Block 7, Gulshan-e-Iqbal, Karachi",
+                3500,
+            ),
+        ],
+        "home_fee": None,
+        "hours": [(MON_TO_FRI, "16:00", "20:00", 0), ([5], "10:00", "13:00", 0)],
+    },
+    {
+        "name": "Zainab Farooq",
+        "email": "zainab.farooq@example.com",
+        "specialty": "Dentist",
+        "pmdc": "62309-P",
+        "experience": 7,
+        "clinics": [
+            (
+                "Smile Dental Clinic",
+                "Bahadurabad",
+                "Shop 5, near Bahadurabad Chowrangi, Karachi",
+                1500,
+            ),
+            ("Clifton Dental Studio", "Clifton", "Block 8, Clifton, Karachi", 2000),
+        ],
+        "home_fee": None,
+        "hours": [(MON_TO_SAT, "10:00", "14:00", 0), ([0, 2, 4], "17:00", "20:00", 1)],
     },
 ]
 
@@ -155,11 +245,9 @@ PENDING_DOCTOR = {
     "specialty": "Neurologist",
     "pmdc": "33482-P",
     "experience": 9,
-    "area": "DHA Phase 5",
-    "clinic": "Phase 5, DHA, Karachi",
-    "fee": 3000,
-    "home_visits": False,
-    "hours": [(MON_TO_FRI, "15:00", "19:00")],
+    "clinics": [("DHA Neuro Clinic", "DHA Phase 5", "Phase 5, DHA, Karachi", 3000)],
+    "home_fee": None,
+    "hours": [(MON_TO_FRI, "15:00", "19:00", 0)],
 }
 
 
@@ -184,11 +272,8 @@ def add_doctor(db, data, status, submitted_days_ago, reviewer=None):
         pmdc_number=data["pmdc"],
         experience_years=data["experience"],
         city="Karachi",
-        area=data["area"],
-        clinic_address=data["clinic"],
-        fee=data["fee"],
-        offers_clinic=True,
-        offers_home_visit=data["home_visits"],
+        offers_home_visit=data["home_fee"] is not None,
+        home_visit_fee=data["home_fee"],
         slot_minutes=30,
         approval_status=status,
         submitted_at=submitted_at,
@@ -196,13 +281,18 @@ def add_doctor(db, data, status, submitted_days_ago, reviewer=None):
         reviewer=reviewer,
         reviewed_at=submitted_at + timedelta(days=1) if reviewer else None,
     )
+    profile.clinics = [
+        Clinic(name=name, area=area, address=address, fee=fee)
+        for name, area, address, fee in data["clinics"]
+    ]
     profile.availability = [
         Availability(
+            clinic=None if place == HOME else profile.clinics[place],
             day_of_week=day,
             start_time=time.fromisoformat(start),
             end_time=time.fromisoformat(end),
         )
-        for days, start, end in data["hours"]
+        for days, start, end, place in data["hours"]
         for day in days
     ]
     db.add(profile)
@@ -210,44 +300,50 @@ def add_doctor(db, data, status, submitted_days_ago, reviewer=None):
 
 
 class Booker:
-    """Places demo appointments on real open slots, starting from a given day."""
+    """Places demo appointments on real open slots, starting from a given day.
+
+    place is the index of one of the doctor's clinics, or HOME for a home visit.
+    """
 
     def __init__(self, db):
         self.db = db
         self.taken = defaultdict(list)
 
-    def upcoming(self, patient, doctor, days_from_today, **details):
+    def upcoming(self, patient, doctor, days_from_today, place=0, **details):
         now = datetime.now()
+        blocks = self.blocks_for(doctor, place)
         for offset in range(days_from_today, BOOKING_WINDOW_DAYS):
             day = now.date() + timedelta(days=offset)
-            slots = open_slots(
-                day, doctor.availability, doctor.slot_minutes, self.taken[doctor, day], now
-            )
+            slots = open_slots(day, blocks, doctor.slot_minutes, self.taken[doctor, day], now)
             if slots:
-                self.add(patient, doctor, day, slots[0], "confirmed", **details)
+                self.add(patient, doctor, place, day, slots[0], "confirmed", **details)
                 return
 
-    def past(self, patient, doctor, days_ago, **details):
+    def past(self, patient, doctor, days_ago, place=0, **details):
+        blocks = self.blocks_for(doctor, place)
         day = date.today() - timedelta(days=days_ago)
-        while not day_slots(self.blocks_on(doctor, day), doctor.slot_minutes):
+        while not day_slots(blocks, day.weekday(), doctor.slot_minutes):
             day -= timedelta(days=1)
-        start = day_slots(self.blocks_on(doctor, day), doctor.slot_minutes)[0]
-        self.add(patient, doctor, day, start, "completed", **details)
+        start = day_slots(blocks, day.weekday(), doctor.slot_minutes)[0]
+        self.add(patient, doctor, place, day, start, "completed", **details)
 
-    def blocks_on(self, doctor, day):
-        return [block for block in doctor.availability if block.day_of_week == day.weekday()]
+    def blocks_for(self, doctor, place):
+        return blocks_at(doctor.availability, None if place == HOME else doctor.clinics[place].id)
 
-    def add(self, patient, doctor, day, start, status, consultation_type="clinic", **details):
+    def add(self, patient, doctor, place, day, start, status, **details):
+        clinic = None if place == HOME else doctor.clinics[place]
         end = add_minutes(start, doctor.slot_minutes)
         self.taken[doctor, day].append((start, end))
         self.db.add(
             Appointment(
                 patient=patient,
                 doctor=doctor,
+                clinic=clinic,
+                fee=clinic.fee if clinic else doctor.home_visit_fee,
                 date=day,
                 start_time=start,
                 end_time=end,
-                consultation_type=consultation_type,
+                consultation_type="clinic" if clinic else "home",
                 status=status,
                 **details,
             )
@@ -274,6 +370,8 @@ def main():
             for index, data in enumerate(DOCTORS)
         ]
         add_doctor(db, PENDING_DOCTOR, "pending", submitted_days_ago=1)
+        # Gives the clinics their ids, which the weekly blocks are matched on below
+        db.flush()
 
         ahmed = add_user(db, "Ahmed Raza", DEMO_PATIENT_EMAIL, "patient")
         sara = add_user(db, "Sara Khan", "sara.khan@example.com", "patient")
@@ -286,7 +384,7 @@ def main():
             ahmed,
             bilal,
             3,
-            consultation_type="home",
+            place=HOME,
             home_address="House 12, Street 4, Block 7, Gulshan-e-Iqbal, Karachi",
             patient_note="Fever and body ache for two days",
         )
@@ -296,10 +394,11 @@ def main():
             farhan,
             ayesha,
             2,
-            consultation_type="home",
+            place=HOME,
             home_address="Flat 5, Sea View Apartments, Clifton, Karachi",
         )
         booker.past(sara, ayesha, 3)
+        booker.upcoming(sara, ayesha, 1, place=1, patient_note="Second opinion on an ECG report")
 
         db.commit()
 

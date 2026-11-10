@@ -33,8 +33,8 @@ SYMPTOMS = {
     "Toothache": "Dentist",
 }
 
-# Karachi is the pilot city, so it comes first and is the default
-CITIES = ["Karachi", "Lahore"]
+# The platform runs in Karachi only for now, so every doctor profile is in this city
+CITY = "Karachi"
 
 # Index matches availability.day_of_week (0 = Monday)
 DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
