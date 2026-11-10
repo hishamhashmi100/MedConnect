@@ -113,6 +113,7 @@ function MyAppointments() {
               <AppointmentRow
                 key={appointment.id}
                 appointment={appointment}
+                now={now}
                 details
                 actions={
                   tab === 'upcoming' && (

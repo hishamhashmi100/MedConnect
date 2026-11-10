@@ -6,20 +6,24 @@ import AuthHeading from '../../components/AuthHeading'
 import AuthLayout from '../../components/AuthLayout'
 import Field from '../../components/Field'
 import PrimaryButton from '../../components/PrimaryButton'
+import { checkEmail, useFieldErrors } from '../../utils/validation'
 
 function ForgotPassword() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const { show, touch, checkAll } = useFieldErrors({ email: checkEmail(email) })
 
   async function handleSubmit(event) {
     event.preventDefault()
     setError('')
+    if (!checkAll()) return
+
     setSubmitting(true)
     try {
-      await client.post('/auth/forgot-password', { email })
-      navigate(`/reset-password?email=${encodeURIComponent(email)}`)
+      await client.post('/auth/forgot-password', { email: email.trim() })
+      navigate(`/reset-password?email=${encodeURIComponent(email.trim())}`)
     } catch (err) {
       setError(getErrorMessage(err))
       setSubmitting(false)
@@ -34,15 +38,16 @@ function ForgotPassword() {
         subtitle="Enter your account email and we will send you a 6-digit code to set a new password."
       />
 
-      <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-4">
         {error && <Alert>{error}</Alert>}
         <Field
           label="Email address"
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
+          onBlur={() => touch('email')}
+          error={show('email')}
           autoComplete="email"
-          required
         />
         <div className="pt-2">
           <PrimaryButton disabled={submitting}>

@@ -8,6 +8,7 @@ import Register from './pages/auth/Register'
 import ResetPassword from './pages/auth/ResetPassword'
 import VerifyOtp from './pages/auth/VerifyOtp'
 import Availability from './pages/doctor/Availability'
+import Clinics from './pages/doctor/Clinics'
 import DoctorHome from './pages/doctor/DoctorHome'
 import ProfileSetup from './pages/doctor/ProfileSetup'
 import BookDoctor from './pages/patient/BookDoctor'
@@ -59,6 +60,7 @@ function App() {
         <Route element={<AppLayout />}>
           <Route path="/doctor" element={<DoctorHome />} />
           <Route path="/doctor/profile" element={<ProfileSetup />} />
+          <Route path="/doctor/clinics" element={<Clinics />} />
           <Route path="/doctor/availability" element={<Availability />} />
         </Route>
       </Route>

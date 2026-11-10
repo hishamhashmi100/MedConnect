@@ -124,9 +124,36 @@ export function appointmentStart(appointment) {
   return new Date(`${appointment.date}T${appointment.start_time}`)
 }
 
+// When an appointment ends. An end of 00:00 is midnight at the end of its day.
+export function appointmentEnd(appointment) {
+  const end = new Date(`${appointment.date}T${appointment.end_time}`)
+  if (appointment.end_time.startsWith('00:00')) end.setDate(end.getDate() + 1)
+  return end
+}
+
+// The badge a patient sees. Once a confirmed visit's time comes it shows "In progress" until
+// it ends, then "Awaiting completion" until the doctor marks it completed.
+export function patientStatus(appointment, now) {
+  if (appointment.status !== 'confirmed' || appointmentStart(appointment) > now) {
+    return appointment.status
+  }
+  return appointmentEnd(appointment) > now ? 'in_progress' : 'awaiting_completion'
+}
+
 // Only confirmed appointments that haven't started can still be changed
 export function isUpcoming(appointment, now) {
   return appointment.status === 'confirmed' && appointmentStart(appointment) > now
+}
+
+// Who cancelled a booking and why, worded for the person looking at it
+export function cancelNote(appointment, viewer) {
+  if (appointment.status !== 'cancelled') return ''
+  const by = appointment.cancelled_by
+  const reason = appointment.cancel_reason
+  if (by === viewer) return reason ? `You cancelled it: ${reason}` : 'You cancelled it.'
+  if (by === 'patient') return 'Cancelled by the patient.'
+  if (by === 'doctor') return `Cancelled by the doctor: ${reason}`
+  return `Cancelled by MedConnect PK: ${reason}`
 }
 
 // Time left until a date, for example "1 day, 4 hours" or "35 minutes"

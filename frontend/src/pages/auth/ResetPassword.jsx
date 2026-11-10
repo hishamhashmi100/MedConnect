@@ -6,10 +6,12 @@ import Alert from '../../components/Alert'
 import AuthHeading from '../../components/AuthHeading'
 import AuthLayout from '../../components/AuthLayout'
 import Field from '../../components/Field'
+import FieldMessage from '../../components/FieldMessage'
 import OtpInput from '../../components/OtpInput'
 import PrimaryButton from '../../components/PrimaryButton'
 import ResendCode from '../../components/ResendCode'
 import { maskEmail } from '../../utils/format'
+import { checkConfirmPassword, checkNewPassword, useFieldErrors } from '../../utils/validation'
 
 function ResetPassword() {
   const navigate = useNavigate()
@@ -21,21 +23,19 @@ function ResetPassword() {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  if (!email) return <Navigate to="/forgot-password" replace />
-
   const code = digits.join('')
+  const { show, touch, checkAll } = useFieldErrors({
+    code: code.length === 6 ? '' : 'Please enter all 6 digits of the code.',
+    newPassword: checkNewPassword(newPassword),
+    confirmPassword: checkConfirmPassword(confirmPassword, newPassword),
+  })
+
+  if (!email) return <Navigate to="/forgot-password" replace />
 
   async function handleSubmit(event) {
     event.preventDefault()
     setError('')
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters.')
-      return
-    }
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.')
-      return
-    }
+    if (!checkAll()) return
 
     setSubmitting(true)
     try {
@@ -62,8 +62,13 @@ function ResetPassword() {
         <span className="font-semibold text-slate-600">{maskEmail(email)}</span>
       </p>
 
-      <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-        <OtpInput digits={digits} onChange={setDigits} />
+      <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-5">
+        <div>
+          <OtpInput digits={digits} onChange={setDigits} />
+          <div className="text-center">
+            <FieldMessage error={show('code')} />
+          </div>
+        </div>
         <ResendCode email={email} purpose="reset" />
         {error && <Alert>{error}</Alert>}
         <Field
@@ -71,19 +76,24 @@ function ResetPassword() {
           type="password"
           value={newPassword}
           onChange={(event) => setNewPassword(event.target.value)}
+          onBlur={() => touch('newPassword')}
+          error={show('newPassword')}
+          hint="At least 8 characters, with a letter and a number."
           autoComplete="new-password"
-          required
+          maxLength={72}
         />
         <Field
           label="Confirm new password"
           type="password"
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
+          onBlur={() => touch('confirmPassword')}
+          error={show('confirmPassword')}
           autoComplete="new-password"
-          required
+          maxLength={72}
         />
         <div className="pt-1">
-          <PrimaryButton disabled={code.length < 6 || submitting}>
+          <PrimaryButton disabled={submitting}>
             {submitting ? 'Updating...' : 'Update password'}
           </PrimaryButton>
         </div>

@@ -13,6 +13,13 @@
   --color-pending-text: #92400e;
 }
 
+/* Page text can't be highlighted by dragging or double-clicking, so the app feels like an app.
+   Inputs stay selectable, otherwise users couldn't select and fix what they typed. */
 body {
-  @apply bg-page font-sans text-slate-700 antialiased;
+  @apply bg-page font-sans text-slate-700 antialiased select-none;
+}
+
+input,
+textarea {
+  @apply select-text;
 }

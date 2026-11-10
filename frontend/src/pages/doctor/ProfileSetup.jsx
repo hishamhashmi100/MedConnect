@@ -1,34 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Building2, House } from 'lucide-react'
 import client, { getErrorMessage, notFoundAsNull } from '../../api/client'
 import Alert from '../../components/Alert'
-import Field from '../../components/Field'
+import DoctorDetailsFields from '../../components/DoctorDetailsFields'
 import PageHeading from '../../components/PageHeading'
 import PrimaryButton from '../../components/PrimaryButton'
-import SelectField from '../../components/SelectField'
-
-const EMPTY_FORM = {
-  specialty: '',
-  pmdc_number: '',
-  experience_years: '',
-  city: 'Karachi',
-  area: '',
-  clinic_address: '',
-  fee: '',
-  offers_clinic: true,
-  offers_home_visit: false,
-  slot_minutes: 30,
-}
-
-const CONSULTATION_TYPES = [
-  { field: 'offers_clinic', label: 'In-clinic', icon: Building2 },
-  { field: 'offers_home_visit', label: 'Home visit', icon: House },
-]
+import { doctorDetailsPayload, EMPTY_DOCTOR_DETAILS } from '../../utils/doctorDetails'
+import { doctorDetailsErrors, useFieldErrors } from '../../utils/validation'
 
 function toForm(profile) {
   const form = {}
-  for (const field of Object.keys(EMPTY_FORM)) {
+  for (const field of Object.keys(EMPTY_DOCTOR_DETAILS)) {
     form[field] = profile[field] ?? ''
   }
   return form
@@ -36,27 +18,22 @@ function toForm(profile) {
 
 function ProfileSetup() {
   const navigate = useNavigate()
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [form, setForm] = useState(EMPTY_DOCTOR_DETAILS)
   const [profile, setProfile] = useState(null)
-  const [options, setOptions] = useState({ specialties: [], cities: [], slotLengths: [] })
+  const [specialties, setSpecialties] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const { show, touch, checkAll } = useFieldErrors(doctorDetailsErrors(form))
 
   useEffect(() => {
     Promise.all([
       client.get('/meta/specialties'),
-      client.get('/meta/cities'),
-      client.get('/meta/slot-lengths'),
       client.get('/doctor/profile').catch(notFoundAsNull),
     ])
-      .then(([specialties, cities, slotLengths, profileResponse]) => {
-        setOptions({
-          specialties: specialties.data,
-          cities: cities.data,
-          slotLengths: slotLengths.data,
-        })
+      .then(([specialtiesResponse, profileResponse]) => {
+        setSpecialties(specialtiesResponse.data)
         if (profileResponse) {
           setProfile(profileResponse.data)
           setForm(toForm(profileResponse.data))
@@ -67,38 +44,42 @@ function ProfileSetup() {
   }, [])
 
   function update(field, value) {
+    setNotice('')
     setForm((current) => ({ ...current, [field]: value }))
   }
+
+  // The admin checked these two against the PMDC register, so changing them means a new review
+  const changesReviewedDetails =
+    profile?.approval_status === 'approved' &&
+    (form.pmdc_number.trim().toUpperCase() !== profile.pmdc_number ||
+      form.specialty !== profile.specialty)
 
   async function handleSubmit(event) {
     event.preventDefault()
     setError('')
     setNotice('')
-    if (!form.offers_clinic && !form.offers_home_visit) {
-      setError('Please choose at least one consultation type.')
+    if (!checkAll()) {
+      setError('Please correct the fields marked in red.')
       return
     }
 
     setSaving(true)
     try {
-      const response = await client.put('/doctor/profile', {
-        ...form,
-        experience_years: Number(form.experience_years),
-        fee: Number(form.fee),
-        slot_minutes: Number(form.slot_minutes),
-        clinic_address: form.offers_clinic ? form.clinic_address : null,
-      })
-      // A brand new doctor goes straight on to set their weekly hours
+      const response = await client.put('/doctor/profile', doctorDetailsPayload(form))
+      // A doctor without a profile yet goes straight on to add their clinics
       if (!profile) {
-        navigate('/doctor/availability')
+        navigate('/doctor/clinics')
         return
       }
+      const sentForReview =
+        response.data.approval_status === 'pending' && profile.approval_status !== 'pending'
       setNotice(
-        profile.approval_status === 'rejected'
-          ? 'Profile saved and sent to the admin team for review again.'
+        sentForReview
+          ? 'Profile saved and sent to the admin team for review. Patients can book you again once it is approved.'
           : 'Profile saved.',
       )
       setProfile(response.data)
+      setForm(toForm(response.data))
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
@@ -118,7 +99,7 @@ function ProfileSetup() {
         />
       ) : (
         <PageHeading
-          eyebrow="Step 1 of 2"
+          eyebrow="Professional details"
           title="Set up your profile"
           subtitle="Patients see these details when they search for doctors. Our admin team checks your PMDC number before your profile goes live."
         />
@@ -135,114 +116,23 @@ function ProfileSetup() {
 
       <form
         onSubmit={handleSubmit}
+        noValidate
         className="mt-8 space-y-5 rounded-3xl border border-slate-200 bg-white p-6 sm:p-8"
       >
-        <div className="grid gap-5 md:grid-cols-2">
-          <SelectField
-            label="Specialty"
-            value={form.specialty}
-            onChange={(event) => update('specialty', event.target.value)}
-            required
-          >
-            <option value="" disabled>
-              Choose your specialty
-            </option>
-            {options.specialties.map((specialty) => (
-              <option key={specialty}>{specialty}</option>
-            ))}
-          </SelectField>
-          <Field
-            label="PMDC registration number"
-            placeholder="12345-P"
-            value={form.pmdc_number}
-            onChange={(event) => update('pmdc_number', event.target.value)}
-            required
-          />
-          <Field
-            label="Years of experience"
-            type="number"
-            min="0"
-            max="60"
-            value={form.experience_years}
-            onChange={(event) => update('experience_years', event.target.value)}
-            required
-          />
-          <Field
-            label="Consultation fee (Rs.)"
-            type="number"
-            min="1"
-            placeholder="2500"
-            value={form.fee}
-            onChange={(event) => update('fee', event.target.value)}
-            required
-          />
-          <SelectField
-            label="City"
-            value={form.city}
-            onChange={(event) => update('city', event.target.value)}
-          >
-            {options.cities.map((city) => (
-              <option key={city}>{city}</option>
-            ))}
-          </SelectField>
-          <Field
-            label="Area"
-            placeholder="Clifton"
-            value={form.area}
-            onChange={(event) => update('area', event.target.value)}
-            required
-          />
-        </div>
+        <DoctorDetailsFields
+          form={form}
+          update={update}
+          show={show}
+          touch={touch}
+          specialties={specialties}
+        />
 
-        <div>
-          <p className="mb-3 text-sm font-semibold text-primary-dark">Consultation types</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {CONSULTATION_TYPES.map((type) => (
-              <label
-                key={type.field}
-                className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-5 py-4 transition ${
-                  form[type.field]
-                    ? 'border-primary bg-mint text-primary-dark'
-                    : 'border-slate-200 text-slate-600 hover:border-primary/40'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={form[type.field]}
-                  onChange={(event) => update(type.field, event.target.checked)}
-                  className="h-5 w-5 accent-primary"
-                />
-                <type.icon size={20} />
-                <span className="font-semibold">{type.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        {form.offers_clinic && (
-          <Field
-            label="Clinic address"
-            placeholder="Plot 4, Block 5, Clifton, Karachi"
-            value={form.clinic_address}
-            onChange={(event) => update('clinic_address', event.target.value)}
-            required
-          />
+        {changesReviewedDetails && (
+          <p className="rounded-2xl bg-pending px-4 py-3 text-sm font-medium text-pending-text">
+            Changing your PMDC number or specialty sends your profile back to the admin team for
+            review. Patients can't book you until it is approved again. Your existing bookings stay.
+          </p>
         )}
-
-        <div className="md:w-1/2">
-          <SelectField
-            label="Appointment length"
-            value={form.slot_minutes}
-            onChange={(event) => update('slot_minutes', event.target.value)}
-          >
-            {options.slotLengths.map((minutes) => (
-              <option key={minutes} value={minutes}>
-                {minutes} minutes
-              </option>
-            ))}
-          </SelectField>
-        </div>
-
         {error && <Alert>{error}</Alert>}
         {notice && <Alert type="success">{notice}</Alert>}
 

@@ -5,6 +5,7 @@ import client, { getErrorMessage } from '../../api/client'
 import Alert from '../../components/Alert'
 import AppointmentRow from '../../components/AppointmentRow'
 import { useAuth } from '../../context/AuthContext'
+import { appointmentPlaceName } from '../../utils/places'
 import {
   appointmentStart,
   doctorName,
@@ -64,7 +65,6 @@ function NextAppointmentCard({ appointment }) {
   }
 
   const day = fromDateKey(appointment.date)
-  const isHome = appointment.consultation_type === 'home'
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8">
@@ -80,11 +80,9 @@ function NextAppointmentCard({ appointment }) {
       <p className="mt-5 text-2xl font-bold text-primary-dark">
         {doctorName(appointment.doctor.full_name)}
       </p>
-      <p className="mt-1 text-lg text-slate-500">
-        {appointment.doctor.specialty} · {appointment.doctor.area}
-      </p>
+      <p className="mt-1 text-lg text-slate-500">{appointment.doctor.specialty}</p>
       <p className="mt-1 text-slate-500">
-        {formatTime(appointment.start_time)} · {isHome ? 'Home visit' : 'In-clinic visit'}
+        {formatTime(appointment.start_time)} · {appointmentPlaceName(appointment)}
       </p>
       <div className="mt-5 flex items-center gap-4 rounded-2xl bg-page p-4">
         <Clock size={24} className="text-primary" />
@@ -176,6 +174,7 @@ function Home() {
               <AppointmentRow
                 key={appointment.id}
                 appointment={appointment}
+                now={now}
                 actions={
                   <Link
                     to={`/appointments/${appointment.id}/reschedule`}

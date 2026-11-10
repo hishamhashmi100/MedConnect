@@ -30,6 +30,20 @@ client.interceptors.request.use((config) => {
   return config
 })
 
+// When a saved login has expired, every page would fail, so start again from the login page.
+// A 401 from the login form itself is just a wrong password and is left to that page.
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const loggedIn = Boolean(error.config?.headers?.Authorization)
+    if (error.response?.status === 401 && loggedIn && error.config.url !== '/auth/me') {
+      clearToken()
+      window.location.assign('/login?expired=1')
+    }
+    return Promise.reject(error)
+  },
+)
+
 // The API sends errors in a few shapes (plain text, an object, or a list from field validation)
 export function getErrorMessage(error) {
   if (!error.response) {

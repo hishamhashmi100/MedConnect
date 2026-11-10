@@ -19,7 +19,6 @@ function filtersFromUrl(searchParams) {
     specialty: searchParams.get('specialty') || '',
     symptom: searchParams.get('symptom') || '',
     consultation_type: searchParams.get('consultation_type') || '',
-    city: searchParams.get('city') || 'Karachi',
   }
 }
 
@@ -31,7 +30,7 @@ function Doctors() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [filters, setFilters] = useState(() => filtersFromUrl(searchParams))
   const [lastUrl, setLastUrl] = useState(searchParams.toString())
-  const [options, setOptions] = useState({ specialties: [], symptoms: [], cities: [] })
+  const [options, setOptions] = useState({ specialties: [], symptoms: [] })
   const [doctors, setDoctors] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -47,13 +46,9 @@ function Doctors() {
   }
 
   useEffect(() => {
-    Promise.all([
-      client.get('/meta/specialties'),
-      client.get('/meta/symptoms'),
-      client.get('/meta/cities'),
-    ])
-      .then(([specialties, symptoms, cities]) =>
-        setOptions({ specialties: specialties.data, symptoms: symptoms.data, cities: cities.data }),
+    Promise.all([client.get('/meta/specialties'), client.get('/meta/symptoms')])
+      .then(([specialties, symptoms]) =>
+        setOptions({ specialties: specialties.data, symptoms: symptoms.data }),
       )
       .catch((err) => setError(getErrorMessage(err)))
   }, [])
@@ -101,7 +96,7 @@ function Doctors() {
     <div className="space-y-8">
       <form
         onSubmit={applySearch}
-        className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_0.8fr_auto]"
+        className="grid gap-4 rounded-3xl border border-slate-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto]"
       >
         <SelectField
           label="Specialty"
@@ -132,15 +127,6 @@ function Doctors() {
           <option value="clinic">In-clinic visit</option>
           <option value="home">Home visit</option>
         </SelectField>
-        <SelectField
-          label="City"
-          value={filters.city}
-          onChange={(event) => update('city', event.target.value)}
-        >
-          {options.cities.map((city) => (
-            <option key={city}>{city}</option>
-          ))}
-        </SelectField>
         <button
           type="submit"
           className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-8 py-4 text-lg font-semibold text-white shadow-lg shadow-primary/25 hover:bg-primary-dark"
@@ -160,7 +146,7 @@ function Doctors() {
           {!loading && (
             <p className="mt-3 text-lg text-slate-500">
               {doctors.length} admin-approved {doctors.length === 1 ? 'doctor' : 'doctors'}{' '}
-              available in {applied.city}
+              available in Karachi
             </p>
           )}
         </div>
@@ -205,7 +191,8 @@ function Doctors() {
         <div className="space-y-5">
           {doctors.length === 0 && (
             <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">
-              No doctors match these filters. Try a different specialty, symptom or city.
+              No doctors match these filters. Try a different specialty, symptom or consultation
+              type.
             </div>
           )}
           {doctors.map((doctor) => (

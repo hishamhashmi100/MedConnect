@@ -1,4 +1,11 @@
-import { CalendarCheck, CalendarClock, LayoutGrid, Stethoscope, UserRound } from 'lucide-react'
+import {
+  Building2,
+  CalendarCheck,
+  CalendarClock,
+  LayoutGrid,
+  Stethoscope,
+  UserRound,
+} from 'lucide-react'
 
 // Sidebar links for each role. "end" means the link is only active on that exact path,
 // so Home is not highlighted on every page below it.
@@ -11,7 +18,8 @@ const NAV_ITEMS = {
   doctor: [
     { to: '/doctor', label: 'Home', icon: LayoutGrid, end: true },
     { to: '/doctor/profile', label: 'Profile', icon: UserRound },
-    { to: '/doctor/availability', label: 'Availability', icon: CalendarClock },
+    { to: '/doctor/clinics', label: 'Clinics and fees', icon: Building2 },
+    { to: '/doctor/availability', label: 'Weekly hours', icon: CalendarClock },
   ],
   admin: [{ to: '/admin', label: 'Overview', icon: LayoutGrid, end: true }],
 }

@@ -1,9 +1,18 @@
 import { House, Stethoscope } from 'lucide-react'
-import { doctorName, formatShortDay, formatTime } from '../utils/format'
+import {
+  cancelNote,
+  doctorName,
+  formatFee,
+  formatShortDay,
+  formatTime,
+  patientStatus,
+} from '../utils/format'
+import { appointmentPlaceText } from '../utils/places'
 import StatusBadge from './StatusBadge'
 
-// One appointment in a list. "details" shows the address and note (used on My Appointments).
-function AppointmentRow({ appointment, actions, details = false }) {
+// One appointment in a list. now decides the badge for a visit whose time has come. "details" shows the address and note (used on My Appointments).
+function AppointmentRow({ appointment, actions, details = false, now }) {
+  const status = patientStatus(appointment, now)
   const isHome = appointment.consultation_type === 'home'
   const Icon = isHome ? House : Stethoscope
 
@@ -22,16 +31,27 @@ function AppointmentRow({ appointment, actions, details = false }) {
         </p>
         {details && (
           <div className="mt-2 space-y-1 text-sm text-slate-500">
+            <p>{appointmentPlaceText(appointment)}</p>
+            {/* The app doesn't record payments, so only an open visit mentions paying */}
             <p>
-              {isHome ? 'Home visit at ' : 'In-clinic at '}
-              {isHome ? appointment.home_address : appointment.doctor.clinic_address}
+              Fee {formatFee(appointment.fee)}
+              {appointment.status === 'confirmed' && ', payable at the visit'}
             </p>
             {appointment.patient_note && <p>Your note: {appointment.patient_note}</p>}
+            {status === 'awaiting_completion' && (
+              <p className="text-pending-text">
+                {doctorName(appointment.doctor.full_name)} hasn't marked this visit as completed
+                yet.
+              </p>
+            )}
+            {appointment.status === 'cancelled' && (
+              <p className="text-red-700">{cancelNote(appointment, 'patient')}</p>
+            )}
           </div>
         )}
       </div>
       <div className="flex items-center gap-4">
-        <StatusBadge status={appointment.status} />
+        <StatusBadge status={status} />
         {actions}
       </div>
     </div>

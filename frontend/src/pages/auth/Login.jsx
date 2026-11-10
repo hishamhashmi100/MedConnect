@@ -11,9 +11,11 @@ import PrimaryButton from '../../components/PrimaryButton'
 import RoleToggle from '../../components/RoleToggle'
 import { useAuth } from '../../context/AuthContext'
 import { homePathFor } from '../../utils/format'
+import { checkEmail, checkRequired, useFieldErrors } from '../../utils/validation'
 
-// The toggle only changes the wording and links. Where the user lands after login
-// depends on the role the server returns.
+// Patients log in on the Patient tab and doctors on the Provider tab; the server refuses an
+// account on the wrong tab. Admins can use either, and land on the page for the role the
+// server returns.
 const PORTAL_TEXT = {
   patient: {
     eyebrow: 'Secure patient portal',
@@ -41,19 +43,32 @@ function Login() {
   const [submitting, setSubmitting] = useState(false)
 
   const text = PORTAL_TEXT[portal]
-  const notice = location.state?.notice
+  const expired = new URLSearchParams(location.search).has('expired')
+  const notice =
+    location.state?.notice ?? (expired ? 'Your session has expired. Please log in again.' : '')
+
+  const { show, touch, checkAll } = useFieldErrors({
+    email: checkEmail(email),
+    password: checkRequired(password, 'Please enter your password.'),
+  })
 
   async function handleSubmit(event) {
     event.preventDefault()
     setError('')
+    if (!checkAll()) return
+
     setSubmitting(true)
     try {
-      const response = await client.post('/auth/login', { email, password })
+      const response = await client.post('/auth/login', {
+        email: email.trim(),
+        password,
+        role: portal,
+      })
       login(response.data.token, response.data.user, remember)
       navigate(homePathFor(response.data.user.role), { replace: true })
     } catch (err) {
       if (err.response?.data?.detail?.needs_verification) {
-        navigate(`/verify-otp?email=${encodeURIComponent(email)}`)
+        navigate(`/verify-otp?email=${encodeURIComponent(email.trim())}`)
         return
       }
       setError(getErrorMessage(err))
@@ -67,10 +82,16 @@ function Login() {
       <AuthHeading eyebrow={text.eyebrow} title="Welcome back" subtitle={text.subtitle} />
 
       <div className="mt-8">
-        <RoleToggle value={portal} onChange={setPortal} />
+        <RoleToggle
+          value={portal}
+          onChange={(value) => {
+            setPortal(value)
+            setError('')
+          }}
+        />
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="mt-7 space-y-4">
         {notice && <Alert type="success">{notice}</Alert>}
         {error && <Alert>{error}</Alert>}
 
@@ -79,16 +100,19 @@ function Login() {
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
+          onBlur={() => touch('email')}
+          error={show('email')}
           autoComplete="email"
-          required
         />
         <Field
           label="Password"
           type="password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
+          onBlur={() => touch('password')}
+          error={show('password')}
           autoComplete="current-password"
-          required
+          maxLength={72}
         />
 
         <div className="flex items-center justify-between pt-1">
@@ -105,7 +129,7 @@ function Login() {
             to="/forgot-password"
             className="font-semibold text-primary hover:text-primary-dark"
           >
-            Reset via OTP
+            Forgot password?
           </Link>
         </div>
 

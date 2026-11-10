@@ -5,6 +5,9 @@ const STYLES = {
   rejected: { label: 'Rejected', className: 'bg-red-50 text-red-700' },
   confirmed: { label: 'Confirmed', className: 'bg-mint text-primary-dark' },
   completed: { label: 'Completed', className: 'bg-slate-100 text-slate-600' },
+  // Shown to patients only, worked out from the time (see patientStatus)
+  in_progress: { label: 'In progress', className: 'bg-mint text-primary-dark' },
+  awaiting_completion: { label: 'Awaiting completion', className: 'bg-pending text-pending-text' },
   cancelled: { label: 'Cancelled', className: 'bg-red-50 text-red-700' },
 }
 

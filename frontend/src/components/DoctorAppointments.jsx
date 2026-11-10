@@ -3,12 +3,16 @@ import { House, Stethoscope } from 'lucide-react'
 import client, { getErrorMessage } from '../api/client'
 import {
   appointmentStart,
+  cancelNote,
   formatShortDay,
   formatTime,
+  isUpcoming,
   mondayIndex,
   toDateKey,
 } from '../utils/format'
+import { appointmentPlaceName } from '../utils/places'
 import Alert from './Alert'
+import ReasonDialog from './ReasonDialog'
 import StatCard from './StatCard'
 import StatusBadge from './StatusBadge'
 
@@ -17,11 +21,16 @@ const TABS = [
   { value: 'earlier', label: 'Earlier' },
 ]
 
-function AppointmentItem({ appointment, now, busy, onComplete }) {
+// New bookings show up without the doctor having to reload the page
+const REFRESH_SECONDS = 60
+
+function AppointmentItem({ appointment, now, busy, onComplete, onCancel }) {
   const isHome = appointment.consultation_type === 'home'
   const Icon = isHome ? House : Stethoscope
-  // A visit can only be marked done once it has started
+  // A visit can only be marked done once it has started, and only cancelled before that
   const canComplete = appointment.status === 'confirmed' && appointmentStart(appointment) <= now
+  const canCancel = isUpcoming(appointment, now)
+  const note = cancelNote(appointment, 'doctor')
 
   return (
     <div className="flex flex-wrap items-start gap-4 py-5">
@@ -32,7 +41,7 @@ function AppointmentItem({ appointment, now, busy, onComplete }) {
         <p className="text-lg font-semibold text-slate-800">{appointment.patient.full_name}</p>
         <p className="text-slate-500">
           {formatShortDay(appointment.date)} · {formatTime(appointment.start_time)} -{' '}
-          {formatTime(appointment.end_time)} · {isHome ? 'Home visit' : 'In-clinic'}
+          {formatTime(appointment.end_time)} · {appointmentPlaceName(appointment)}
         </p>
         {isHome && (
           <p className="mt-1 text-sm text-slate-500">Address: {appointment.home_address}</p>
@@ -40,8 +49,9 @@ function AppointmentItem({ appointment, now, busy, onComplete }) {
         {appointment.patient_note && (
           <p className="mt-1 text-sm text-slate-500">Patient note: {appointment.patient_note}</p>
         )}
+        {note && <p className="mt-1 text-sm text-red-700">{note}</p>}
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <StatusBadge status={appointment.status} />
         {canComplete && (
           <button
@@ -53,6 +63,15 @@ function AppointmentItem({ appointment, now, busy, onComplete }) {
             Mark completed
           </button>
         )}
+        {canCancel && (
+          <button
+            type="button"
+            onClick={() => onCancel(appointment)}
+            className="font-semibold text-red-600 hover:text-red-700"
+          >
+            Cancel
+          </button>
+        )}
       </div>
     </div>
   )
@@ -62,34 +81,58 @@ function AppointmentItem({ appointment, now, busy, onComplete }) {
 function DoctorAppointments() {
   const [appointments, setAppointments] = useState([])
   const [tab, setTab] = useState('upcoming')
-  const [now] = useState(() => new Date())
+  const [now, setNow] = useState(() => new Date())
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState(null)
+  const [cancelling, setCancelling] = useState(null)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
 
   useEffect(() => {
-    client
-      .get('/doctor/appointments')
-      .then((response) => setAppointments(response.data))
-      .catch((err) => setError(getErrorMessage(err)))
-      .finally(() => setLoading(false))
+    function load() {
+      client
+        .get('/doctor/appointments')
+        .then((response) => {
+          setAppointments(response.data)
+          setNow(new Date())
+        })
+        .catch((err) => setError(getErrorMessage(err)))
+        .finally(() => setLoading(false))
+    }
+    load()
+    const timer = setInterval(load, REFRESH_SECONDS * 1000)
+    return () => clearInterval(timer)
   }, [])
+
+  function replace(updated) {
+    setAppointments((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+  }
 
   async function markCompleted(appointment) {
     setError('')
+    setNotice('')
     setBusyId(appointment.id)
     try {
       const response = await client.patch(`/doctor/appointments/${appointment.id}`, {
         status: 'completed',
       })
-      setAppointments((current) =>
-        current.map((item) => (item.id === appointment.id ? response.data : item)),
-      )
+      replace(response.data)
     } catch (err) {
       setError(getErrorMessage(err))
     } finally {
       setBusyId(null)
     }
+  }
+
+  async function cancel(reason) {
+    const response = await client.patch(`/doctor/appointments/${cancelling.id}/cancel`, {
+      reason,
+    })
+    replace(response.data)
+    setNotice(
+      `The appointment with ${cancelling.patient.full_name} was cancelled. They will see your reason.`,
+    )
+    setCancelling(null)
   }
 
   const today = toDateKey(now)
@@ -104,9 +147,7 @@ function DoctorAppointments() {
   const thisWeek = active.filter(
     (item) => item.date >= toDateKey(monday) && item.date <= toDateKey(sunday),
   )
-  const upcoming = active.filter(
-    (item) => item.status === 'confirmed' && appointmentStart(item) > now,
-  )
+  const upcoming = active.filter((item) => isUpcoming(item, now))
 
   const shown = appointments.filter((item) =>
     tab === 'upcoming' ? item.date >= today : item.date < today,
@@ -163,9 +204,9 @@ function DoctorAppointments() {
           </div>
         </div>
 
-        {error && (
+        {(error || notice) && (
           <div className="mt-4">
-            <Alert>{error}</Alert>
+            {error ? <Alert>{error}</Alert> : <Alert type="success">{notice}</Alert>}
           </div>
         )}
 
@@ -184,10 +225,27 @@ function DoctorAppointments() {
               now={now}
               busy={busyId === appointment.id}
               onComplete={markCompleted}
+              onCancel={(item) => {
+                setError('')
+                setNotice('')
+                setCancelling(item)
+              }}
             />
           ))}
         </div>
       </section>
+
+      {cancelling && (
+        <ReasonDialog
+          title="Cancel this appointment?"
+          message={`${cancelling.patient.full_name} on ${formatShortDay(cancelling.date)} at ${formatTime(cancelling.start_time)}. The patient sees your reason on their appointments page.`}
+          warning="The time opens up for other patients again. If you can't work at this time, also change your weekly hours."
+          placeholder="For example: I am away for a medical conference that day"
+          confirmLabel="Cancel appointment"
+          onSubmit={cancel}
+          onCancel={() => setCancelling(null)}
+        />
+      )}
     </>
   )
 }

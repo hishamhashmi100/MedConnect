@@ -3,6 +3,7 @@ import { ShieldCheck } from 'lucide-react'
 import client, { getErrorMessage } from '../../api/client'
 import Alert from '../../components/Alert'
 import PageHeading from '../../components/PageHeading'
+import ReasonDialog from '../../components/ReasonDialog'
 import StatCard from '../../components/StatCard'
 import StatusBadge from '../../components/StatusBadge'
 import { doctorName, formatFee, formatShortDate } from '../../utils/format'
@@ -12,73 +13,6 @@ const TABS = [
   { value: 'approved', label: 'Approved' },
   { value: 'rejected', label: 'Rejected' },
 ]
-
-function RejectDialog({ doctor, onCancel, onRejected }) {
-  const [reason, setReason] = useState('')
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  async function handleSubmit(event) {
-    event.preventDefault()
-    setError('')
-    setSaving(true)
-    try {
-      await client.post(`/admin/doctors/${doctor.id}/reject`, { reason })
-      onRejected()
-    } catch (err) {
-      setError(getErrorMessage(err))
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-6">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-lg space-y-5 rounded-3xl bg-white p-6 shadow-2xl sm:p-8"
-      >
-        <div>
-          <h2 className="text-2xl font-bold text-primary-dark">
-            Reject {doctorName(doctor.full_name)}
-          </h2>
-          <p className="mt-2 text-slate-500">
-            The doctor sees this reason and can fix their profile and submit it again.
-          </p>
-        </div>
-        <label className="block">
-          <span className="text-sm font-semibold text-primary-dark">Reason</span>
-          <textarea
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            rows={4}
-            required
-            minLength={5}
-            maxLength={500}
-            placeholder="For example: PMDC number could not be verified"
-            className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-800 outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
-          />
-        </label>
-        {error && <Alert>{error}</Alert>}
-        <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-xl border border-slate-200 px-5 py-2.5 font-semibold text-slate-600 hover:bg-slate-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="rounded-xl bg-red-600 px-5 py-2.5 font-semibold text-white hover:bg-red-700 disabled:opacity-60"
-          >
-            {saving ? 'Rejecting...' : 'Reject doctor'}
-          </button>
-        </div>
-      </form>
-    </div>
-  )
-}
 
 function AdminHome() {
   const [stats, setStats] = useState(null)
@@ -242,10 +176,25 @@ function AdminHome() {
                 <tr key={doctor.id} className="align-top">
                   <td className="py-5 pr-4">
                     <p className="font-semibold text-slate-800">{doctorName(doctor.full_name)}</p>
-                    <p className="text-slate-500">
-                      {doctor.area}, {doctor.city}
-                    </p>
                     <p className="text-sm text-slate-400">{doctor.email}</p>
+                    {doctor.clinics.map((clinic) => (
+                      <p key={clinic.id} className="text-sm text-slate-500">
+                        {clinic.name}, {clinic.address} · {formatFee(clinic.fee)}
+                      </p>
+                    ))}
+                    {doctor.offers_home_visit && (
+                      <p className="text-sm text-slate-500">
+                        Home visits in {doctor.city} · {formatFee(doctor.home_visit_fee)}
+                      </p>
+                    )}
+                    {doctor.clinics.length === 0 && !doctor.offers_home_visit && (
+                      <p className="mt-1 text-sm text-pending-text">No clinics added yet.</p>
+                    )}
+                    {!doctor.has_hours && (
+                      <p className="mt-1 text-sm text-pending-text">
+                        No weekly hours yet, so patients can't book this doctor even once approved.
+                      </p>
+                    )}
                     {doctor.rejection_reason && (
                       <p className="mt-1 text-sm text-red-700">Reason: {doctor.rejection_reason}</p>
                     )}
@@ -253,15 +202,7 @@ function AdminHome() {
                   <td className="py-5 pr-4">
                     <p className="text-slate-800">{doctor.specialty}</p>
                     <p className="text-sm text-slate-500">
-                      {doctor.experience_years} years · {formatFee(doctor.fee)}
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      {[
-                        doctor.offers_clinic && 'In-clinic',
-                        doctor.offers_home_visit && 'Home visit',
-                      ]
-                        .filter(Boolean)
-                        .join(', ')}
+                      {doctor.experience_years} years · {doctor.slot_minutes} min appointments
                     </p>
                   </td>
                   <td className="py-5 pr-4 font-mono text-slate-800">{doctor.pmdc_number}</td>
@@ -307,13 +248,24 @@ function AdminHome() {
       </section>
 
       {rejecting && (
-        <RejectDialog
-          doctor={rejecting}
-          onCancel={() => setRejecting(null)}
-          onRejected={() => {
+        <ReasonDialog
+          title={`Reject ${doctorName(rejecting.full_name)}`}
+          message="The doctor sees this reason and can fix their profile and submit it again."
+          warning={
+            rejecting.upcoming_appointments > 0
+              ? `${rejecting.upcoming_appointments} upcoming ${
+                  rejecting.upcoming_appointments === 1 ? 'appointment' : 'appointments'
+                } with this doctor will be cancelled, and the patients will see it on their appointments page.`
+              : ''
+          }
+          placeholder="For example: PMDC number could not be verified"
+          confirmLabel="Reject doctor"
+          onSubmit={async (reason) => {
+            await client.post(`/admin/doctors/${rejecting.id}/reject`, { reason })
             setRejecting(null)
             refresh()
           }}
+          onCancel={() => setRejecting(null)}
         />
       )}
     </div>
